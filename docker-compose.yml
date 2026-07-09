@@ -1,0 +1,41 @@
+# ============================================================
+# docker-compose.yml — yuos/ftp-server 服务定义
+# 更新日期: 2026-07-09
+# ============================================================
+
+version: "3.8"
+
+services:
+
+  vsftpd:
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+      args:
+        USER_ID: 1000
+        GROUP_ID: 1000
+    image: yuos/ftp-server:latest
+    container_name: vsftpd
+    restart: unless-stopped
+    ports:
+      # FTP 控制端口
+      - "21:21"
+      # FTP 数据端口（主动模式）
+      - "20:20"
+      # 被动模式端口范围
+      - "21100-21110:21100-21110"
+    environment:
+      # FTP 账户配置
+      FTP_USER: user1
+      FTP_PASS: ftp-password-123
+      # 被动模式地址（替换为宿主机的公网 IP 或域名）
+      PASV_ADDRESS: 127.0.0.1
+      PASV_MIN_PORT: 21100
+      PASV_MAX_PORT: 21110
+      # 其他配置（可按需修改）
+      LOG_STDOUT: "YES"
+    volumes:
+      # FTP 数据目录（宿主目录映射）
+      - "./data:/home/vsftpd"
+      # 日志目录（可选）
+      - "./logs:/var/log/vsftpd"
