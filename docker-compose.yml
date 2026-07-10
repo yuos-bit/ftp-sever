@@ -11,9 +11,6 @@ services:
     build:
       context: .
       dockerfile: ./Dockerfile
-      args:
-        USER_ID: 1000
-        GROUP_ID: 1000
     image: yuos/ftp-server:latest
     container_name: vsftpd
     restart: unless-stopped
