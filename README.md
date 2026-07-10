@@ -70,9 +70,21 @@ docker pull crpi-p23ba2t3b53i8v8p.cn-chengdu.personal.cr.aliyuncs.com/yuos-data/
 git clone https://github.com/fauria/docker-vsftpd.git
 cd docker-vsftpd
 
-# 构建镜像
-docker build -t yuos/ftp-server .
+# 构建镜像（默认 latest 标签）
+sudo docker build -t yuos/ftp-server .
+
+# 推荐：构建时指定版本号（同时打 latest 和版本标签）
+sudo docker build -t yuos/ftp-server:latest -t yuos/ftp-server:1.0.0 .
 ```
+
+#### 版本号管理建议
+
+| 方式 | 命令 |
+|---|---|
+| 基于 Git commit 自动生成版本 | `VERSION=$(git log --oneline -1 \| awk '{print $1}')`<br>`sudo docker build -t yuos/ftp-server:${VERSION} -t yuos/ftp-server:latest .` |
+| 基于日期自动生成版本 | `VERSION=$(date +%Y%m%d)`<br>`sudo docker build -t yuos/ftp-server:${VERSION} -t yuos/ftp-server:latest .` |
+| 基于 Git tag 自动生成版本 | `VERSION=$(git describe --tags --always)`<br>`sudo docker build -t yuos/ftp-server:${VERSION} -t yuos/ftp-server:latest .` |
+| 从 VERSION 文件读取版本 | 创建 `VERSION` 文件写入版本号（如 `1.0.0`）<br>`VERSION=$(cat VERSION)`<br>`sudo docker build -t yuos/ftp-server:${VERSION} -t yuos/ftp-server:latest .` |
 
 ### 方法四：使用 Docker Compose
 
