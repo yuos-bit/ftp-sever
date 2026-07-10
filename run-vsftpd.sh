@@ -13,7 +13,7 @@ set -o pipefail
 
 # ---------- 0. 镜像版本号 ----------
 
-IMAGE_VERSION="1.1.1"
+IMAGE_VERSION="1.1.6"
 
 # 日志函数：带时间戳输出到 STDOUT
 log_info()  { echo "[$(date '+%Y-%m-%d %H:%M:%S')] [INFO]  $*"; }
