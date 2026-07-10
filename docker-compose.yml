@@ -36,7 +36,10 @@ services:
       # 其他配置（可按需修改）
       LOG_STDOUT: "YES"
     volumes:
-      # FTP 数据目录（宿主目录映射）
-      - "./data:/home/vsftpd"
+      # FTP 数据目录：宿主 ./files/data/ → 容器 /home/vsftpd/admin/
+      # 容器内结构：/home/vsftpd/admin/ 为 chmod 555（不可写根）
+      #               /home/vsftpd/admin/files 为 chmod 755（可写）
+      # 宿主机只需在 ./files/ 下放 data/ 目录，用户登录后看到 data/
+      - "./files/data:/home/vsftpd/admin"
       # 日志目录（可选）
       - "./logs:/var/log/vsftpd"

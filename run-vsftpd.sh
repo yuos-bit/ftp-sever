@@ -66,7 +66,7 @@ create_ftp_user() {
 
     # 用户主目录路径
     local FTP_CHROOT="/home/vsftpd/${USERNAME}"
-    local FTP_WRITABLE="${FTP_CHROOT}/files"
+    local FTP_WRITABLE="${FTP_CHROOT}/data"
 
     # 创建目录结构
     mkdir -p "${FTP_WRITABLE}"
