@@ -16,20 +16,20 @@ services:
     security_opt:
       - seccomp=unconfined
     ports:
-      # FTP 控制端口
+      # FTP 控制端口（注意：宿主 2021 → 容器 21）
       - "2021:21"
       # FTP 数据端口（主动模式）
       - "2020:20"
-      # 被动模式端口范围
-      - "2030-2040:21100-21110"
+      # 被动模式端口范围（保持与 PASV_MIN/MAX_PORT 一致）
+      - "2030-2040:2030-2040"
     environment:
       # FTP 账户配置
-      FTP_USER: user1
-      FTP_PASS: ftp-password-123
+      FTP_USER: admin
+      FTP_PASS: ftpadmin..
       # 被动模式地址（替换为宿主机的公网 IP 或域名）
       PASV_ADDRESS: 127.0.0.1
-      PASV_MIN_PORT: 21100
-      PASV_MAX_PORT: 21110
+      PASV_MIN_PORT: 2030
+      PASV_MAX_PORT: 2040
       # 其他配置（可按需修改）
       LOG_STDOUT: "YES"
     volumes:
