@@ -12,6 +12,9 @@ services:
     image: yuos/ftp-server:latest
     container_name: vsftpd
     restart: unless-stopped
+    # 允许 vsftpd 所需的系统调用（seccomp 沙箱）
+    security_opt:
+      - seccomp=unconfined
     ports:
       # FTP 控制端口
       - "2021:21"

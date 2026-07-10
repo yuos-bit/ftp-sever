@@ -163,21 +163,12 @@ EOB
 
 log_info "初始化完成，正在启动 vsftpd 服务..."
 
-# ---------- 7. 启动 vsftpd ----------
+# ---------- 7. 直接启动 vsftpd ----------
 
-# 前台运行（background=NO），保持容器不退出
-# 先测试配置文件语法是否正确
-log_info "检查 vsftpd 配置文件..."
-# 使用 -olisten=NO 测试配置，不真正监听端口
-# 捕获 stdout 和 stderr 以便查看错误
-VSFTPD_TEST_OUTPUT=$(/usr/sbin/vsftpd -olisten=NO /etc/vsftpd/vsftpd.conf 2>&1) || {
-    EXIT_CODE=$?
-    log_error "vsftpd 测试启动失败，退出码: ${EXIT_CODE}"
-    if [ -n "${VSFTPD_TEST_OUTPUT}" ]; then
-        log_error "vsftpd 错误输出: ${VSFTPD_TEST_OUTPUT}"
-    fi
-    log_error "尝试直接启动以获取更多信息..."
-}
+# 不用 -olisten=NO 测试（vsftpd 在 background=NO 时不允许 listen=NO）
+# 直接前台启动，保持容器不退出
+# 注意：vsftpd 前台运行时不输出信息到 stdout/stderr，错误信息会写入日志文件
+# 日志文件已通过 tail -f 重定向到 STDOUT
 
 log_info "启动 vsftpd..."
 exec /usr/sbin/vsftpd /etc/vsftpd/vsftpd.conf
