@@ -9,7 +9,7 @@ services:
     build:
       context: .
       dockerfile: ./Dockerfile
-    image: yuos/ftp-server:latest
+    image: crpi-p23ba2t3b53i8v8p.cn-chengdu.personal.cr.aliyuncs.com/yuos-data/ftp-sever:latest
     container_name: vsftpd
     restart: unless-stopped
     # 允许 vsftpd 所需的系统调用（seccomp 沙箱）
