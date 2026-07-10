@@ -79,55 +79,6 @@ docker build -t yuos/ftp-server .
 ```bash
 docker-compose up -d
 ```
-
----
-
-## 🚀 推送到阿里云 Registry
-
-构建镜像后，您可以将其推送到阿里云容器镜像服务（ACR），让其他人也能拉取使用。
-
-### 前置条件
-
-1. 在 [阿里云容器镜像服务](https://cr.console.aliyun.com/) 创建命名空间 `yuos-data` 和仓库 `ftp-sever`
-2. 仓库类型选择**公开（Public）**
-
-### 推送步骤
-
-```bash
-# 1. 登录阿里云 Registry
-docker login --username=今年夏至仅我流连 crpi-p23ba2t3b53i8v8p.cn-chengdu.personal.cr.aliyuncs.com
-
-# 2. 构建镜像
-docker build -t yuos/ftp-server .
-
-# 3. 标记镜像为阿里云 Registry 地址
-docker tag yuos/ftp-server:latest crpi-p23ba2t3b53i8v8p.cn-chengdu.personal.cr.aliyuncs.com/yuos-data/ftp-sever:1.0
-
-# 4. 推送到阿里云
-docker push crpi-p23ba2t3b53i8v8p.cn-chengdu.personal.cr.aliyuncs.com/yuos-data/ftp-sever:1.0
-```
-
-### 使用 Docker Compose 构建并推送
-
-```bash
-# 构建镜像
-docker-compose build
-
-# 标记并推送
-docker tag yuos/ftp-server:latest crpi-p23ba2t3b53i8v8p.cn-chengdu.personal.cr.aliyuncs.com/yuos-data/ftp-sever:1.0
-docker push crpi-p23ba2t3b53i8v8p.cn-chengdu.personal.cr.aliyuncs.com/yuos-data/ftp-sever:1.0
-```
-
-### 验证推送结果
-
-```bash
-# 从阿里云 Registry 拉取测试
-docker pull crpi-p23ba2t3b53i8v8p.cn-chengdu.personal.cr.aliyuncs.com/yuos-data/ftp-sever:1.0
-
-# 运行测试
-docker run --rm crpi-p23ba2t3b53i8v8p.cn-chengdu.personal.cr.aliyuncs.com/yuos-data/ftp-sever:1.0
-```
-
 ---
 
 ## ⚙️ 环境变量
