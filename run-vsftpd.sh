@@ -149,7 +149,9 @@ fi
 # 将运行时参数追加到 vsftpd.conf（覆盖默认值）
 # 注意：pasv_promiscuous=YES 在使用 NAT/防火墙时是必需的
 # 否则 vsftpd 会验证数据连接源 IP 与控制连接源 IP 一致，导致数据连接失败
+# 注意：先 echo 一个空行，防止 vsftpd.conf 末尾无换行导致第一行配置被拼接到注释行
 {
+    echo ""
     echo "pasv_address=${PASV_ADDRESS}"
     echo "pasv_max_port=${PASV_MAX_PORT}"
     echo "pasv_min_port=${PASV_MIN_PORT}"
@@ -160,6 +162,7 @@ fi
     echo "xferlog_std_format=${XFERLOG_STD_FORMAT}"
     echo "pasv_promiscuous=${PASV_PROMISCUOUS}"
     echo "port_promiscuous=${PORT_PROMISCUOUS}"
+    echo "seccomp_sandbox=NO"
 } >> /etc/vsftpd/vsftpd.conf
 
 log_info "被动模式配置已写入"
