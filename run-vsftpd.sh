@@ -38,20 +38,17 @@ FTP_WRITABLE="${FTP_CHROOT}/files"
 
 mkdir -p "${FTP_WRITABLE}"
 
+# 注意：必须先创建子目录，再修改根目录权限
 # chroot 根目录设为不可写（vsftpd chroot 安全检查要求）
-chmod 555 "${FTP_CHROOT}"
+chmod 555 "${FTP_CHROOT}" || true
 # 用户实际可写目录
 chmod 755 "${FTP_WRITABLE}"
 chown -R ftp:ftp /home/vsftpd/
 
-# 在用户登录时自动切换到可写子目录（可选）
-# 用户可以使用 "cd files" 进入可写区域
-
-# 生成密码哈希（SHA-512，即 $6$ 格式）
-# 使用 openssl passwd 生成兼容 /etc/shadow 的哈希
-FTP_PASS_HASH=$(openssl passwd -6 "${FTP_PASS}")
-
-# 写入虚拟用户文件（格式: 用户名\n密码哈希\n）
+# 写入虚拟用户数据库
+# 注意：pam_userdb.so 使用 crypt(3) 验证密码
+# 使用 openssl passwd -6 生成 SHA-512 哈希，兼容 crypt(3) 格式
+FTP_PASS_HASH=$(openssl passwd -6 "${FTP_PASS}" 2>/dev/null || echo "${FTP_PASS}")
 echo -e "${FTP_USER}\n${FTP_PASS_HASH}" > /etc/vsftpd/virtual_users.txt
 /usr/bin/db_load -T -t hash -f /etc/vsftpd/virtual_users.txt /etc/vsftpd/virtual_users.db
 
@@ -81,7 +78,7 @@ fi
 LOG_FILE=$(grep '^xferlog_file=' /etc/vsftpd/vsftpd.conf | cut -d= -f2)
 
 # 输出服务器信息
-if [ -z "${LOG_STDOUT}" ]; then
+if [ -z "${LOG_STDOUT:-}" ]; then
     cat << EOB
 ====================================================
 
