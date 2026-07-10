@@ -27,7 +27,7 @@ services:
       FTP_USER: admin
       FTP_PASS: ftpadmin..
       # 被动模式地址：必须设为宿主机真实 IP（客户端通过此 IP 连接数据端口）
-      PASV_ADDRESS: 10.104.5.226
+      PASV_ADDRESS: 127.0.0.1
       PASV_MIN_PORT: 2030
       PASV_MAX_PORT: 2040
       # 启用混杂模式（NAT/端口映射环境下必须开启，否则数据连接被拒）
