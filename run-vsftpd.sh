@@ -116,22 +116,25 @@ log_info "被动模式配置已写入"
 if [ -n "${XFERLOG_FILE}" ]; then
     # 确保日志目录存在
     mkdir -p "$(dirname "${XFERLOG_FILE}")" 2>/dev/null || true
-    # 将 vsftpd 传输日志指向 STDOUT
-    ln -sf /dev/stdout "${XFERLOG_FILE}" 2>/dev/null || log_warn "无法重定向 ${XFERLOG_FILE} 到 STDOUT"
-    log_info "传输日志已重定向到 STDOUT"
+    # 使用 tail -f 方式替代软链接，避免 chroot 后无法访问 /proc/self/fd/1
+    # 在后台启动 tail 监听日志文件并输出到 STDOUT
+    touch "${XFERLOG_FILE}" 2>/dev/null || true
+    tail -f "${XFERLOG_FILE}" &
+    log_info "传输日志已重定向到 STDOUT（tail 方式）"
 fi
 
 # 如果配置了单独的 vsftpd 日志文件，也重定向到 STDOUT
 if [ -n "${VSFTPD_LOG_FILE}" ] && [ "${VSFTPD_LOG_FILE}" != "${XFERLOG_FILE}" ]; then
     mkdir -p "$(dirname "${VSFTPD_LOG_FILE}")" 2>/dev/null || true
-    ln -sf /dev/stdout "${VSFTPD_LOG_FILE}" 2>/dev/null || log_warn "无法重定向 ${VSFTPD_LOG_FILE} 到 STDOUT"
+    touch "${VSFTPD_LOG_FILE}" 2>/dev/null || true
+    tail -f "${VSFTPD_LOG_FILE}" &
 fi
 
 # 将 vsftpd 的 syslog 输出也重定向到 STDOUT
-# 如果 vsftpd 配置了 syslog 模式，syslog 文件也做重定向
 VSFTPD_SYSLOG_FILE="/var/log/vsftpd/vsftpd_syslog.log"
 mkdir -p "$(dirname "${VSFTPD_SYSLOG_FILE}")" 2>/dev/null || true
-ln -sf /dev/stdout "${VSFTPD_SYSLOG_FILE}" 2>/dev/null || true
+touch "${VSFTPD_SYSLOG_FILE}" 2>/dev/null || true
+tail -f "${VSFTPD_SYSLOG_FILE}" 2>/dev/null &
 
 # ---------- 6. 输出服务器信息 ----------
 
@@ -166,21 +169,15 @@ log_info "初始化完成，正在启动 vsftpd 服务..."
 # 先测试配置文件语法是否正确
 log_info "检查 vsftpd 配置文件..."
 # 使用 -olisten=NO 测试配置，不真正监听端口
-/usr/sbin/vsftpd -olisten=NO /etc/vsftpd/vsftpd.conf &
-VSFTPD_PID=$!
-sleep 1
-if kill -0 ${VSFTPD_PID} 2>/dev/null; then
-    # 测试进程在运行，杀掉它然后正式启动
-    kill ${VSFTPD_PID} 2>/dev/null
-    wait ${VSFTPD_PID} 2>/dev/null
-    log_info "配置检查通过"
-else
-    # 等待测试进程退出并获取退出码
-    wait ${VSFTPD_PID} 2>/dev/null
+# 捕获 stdout 和 stderr 以便查看错误
+VSFTPD_TEST_OUTPUT=$(/usr/sbin/vsftpd -olisten=NO /etc/vsftpd/vsftpd.conf 2>&1) || {
     EXIT_CODE=$?
     log_error "vsftpd 测试启动失败，退出码: ${EXIT_CODE}"
-    log_error "请检查 vsftpd 配置和系统环境"
-fi
+    if [ -n "${VSFTPD_TEST_OUTPUT}" ]; then
+        log_error "vsftpd 错误输出: ${VSFTPD_TEST_OUTPUT}"
+    fi
+    log_error "尝试直接启动以获取更多信息..."
+}
 
 log_info "启动 vsftpd..."
 exec /usr/sbin/vsftpd /etc/vsftpd/vsftpd.conf
