@@ -2,7 +2,7 @@
 # ============================================================
 # run-vsftpd.sh — vsftpd 容器入口脚本
 # 更新日期: 2026-07-10
-# 功能: 初始化虚拟用户、配置被动模式、启动 vsftpd
+# 功能: 初始化虚拟用户（pam_pwdfile）、配置被动模式、启动 vsftpd
 # 日志: 初始化信息、传输日志、错误日志均输出到 STDOUT
 # ============================================================
 
@@ -13,7 +13,7 @@ set -o pipefail
 
 # ---------- 0. 镜像版本号 ----------
 
-IMAGE_VERSION="1.0.10"
+IMAGE_VERSION="1.1.0"
 
 # 日志函数：带时间戳输出到 STDOUT
 log_info()  { echo "[$(date '+%Y-%m-%d %H:%M:%S')] [INFO]  $*"; }
@@ -50,7 +50,7 @@ if [ -z "${XFERLOG_FILE}" ]; then
     XFERLOG_FILE="/var/log/vsftpd/vsftpd.log"
 fi
 
-# ---------- 3. 创建用户目录和虚拟用户数据库 ----------
+# ---------- 3. 创建用户目录和虚拟用户密码文件 ----------
 
 # vsftpd 要求 chroot 根目录不可写，但用户需要能够写入文件。
 # 安全方案：chroot 根目录（用户主目录）设为不可写（555），
@@ -59,13 +59,13 @@ fi
 # 确保 vsftpd 所需的运行目录存在（挂载卷可能覆盖）
 mkdir -p /var/run/vsftpd/empty 2>/dev/null || true
 
-# 虚拟用户数据库文件路径
-VIRTUAL_USERS_DB="/etc/vsftpd/virtual_users.db"
+# 虚拟用户密码文件路径（pam_pwdfile.so 直接读取此文件）
+# 格式：每行 username:password_hash（与 Apache htpasswd 兼容）
 VIRTUAL_USERS_TXT="/etc/vsftpd/virtual_users.txt"
 
-# 检查是否已存在虚拟用户数据库（持久化挂载的场景）
-if [ -f "${VIRTUAL_USERS_DB}" ] && [ -s "${VIRTUAL_USERS_DB}" ]; then
-    log_info "检测到已存在的虚拟用户数据库，跳过用户创建"
+# 检查是否已存在虚拟用户密码文件（持久化挂载的场景）
+if [ -f "${VIRTUAL_USERS_TXT}" ] && [ -s "${VIRTUAL_USERS_TXT}" ]; then
+    log_info "检测到已存在的虚拟用户密码文件，跳过用户创建"
 
     # 但还是要确保 FTP_USER 的目录存在
     FTP_CHROOT="/home/vsftpd/${FTP_USER}"
@@ -75,7 +75,7 @@ if [ -f "${VIRTUAL_USERS_DB}" ] && [ -s "${VIRTUAL_USERS_DB}" ]; then
     chmod 755 "${FTP_WRITABLE}" 2>/dev/null || true
     chown -R ftp:ftp /home/vsftpd/ 2>/dev/null || true
 
-    # 如果指定了 ADDITIONAL_USERS，将其追加到数据库
+    # 如果指定了 ADDITIONAL_USERS，将其追加到密码文件
     if [ -n "${ADDITIONAL_USERS:-}" ]; then
         log_info "检测到 ADDITIONAL_USERS，添加额外用户..."
         IFS=',' read -ra USER_LIST <<< "${ADDITIONAL_USERS}"
@@ -84,13 +84,18 @@ if [ -f "${VIRTUAL_USERS_DB}" ] && [ -s "${VIRTUAL_USERS_DB}" ]; then
             ADD_PASS=$(echo "${user_entry}" | cut -d: -f2)
             if [ -n "${ADD_USER}" ] && [ -n "${ADD_PASS}" ]; then
                 ADD_HASH=$(openssl passwd -6 "${ADD_PASS}" 2>/dev/null || echo "${ADD_PASS}")
-                echo -e "${ADD_USER}\n${ADD_HASH}" >> "${VIRTUAL_USERS_TXT}"
-                log_info "添加额外用户: ${ADD_USER}"
+                # 检查用户是否已存在，避免重复添加
+                if grep -q "^${ADD_USER}:" "${VIRTUAL_USERS_TXT}" 2>/dev/null; then
+                    # 更新已有用户的密码
+                    sed -i "s|^${ADD_USER}:.*|${ADD_USER}:${ADD_HASH}|" "${VIRTUAL_USERS_TXT}"
+                    log_info "更新额外用户密码: ${ADD_USER}"
+                else
+                    printf '%s:%s\n' "${ADD_USER}" "${ADD_HASH}" >> "${VIRTUAL_USERS_TXT}"
+                    log_info "添加额外用户: ${ADD_USER}"
+                fi
             fi
         done
-        # 重新生成数据库
-        /usr/bin/db_load -T -t hash -f "${VIRTUAL_USERS_TXT}" "${VIRTUAL_USERS_DB}"
-        log_info "虚拟用户数据库已更新"
+        log_info "虚拟用户密码文件已更新"
     fi
 else
     # 首次启动：创建用户
@@ -113,10 +118,19 @@ else
     chmod 555 "${FTP_CHROOT}" 2>/dev/null || log_warn "无法设置 ${FTP_CHROOT} 为 555（挂载卷限制，忽略）"
     chmod 755 "${FTP_WRITABLE}" 2>/dev/null || log_warn "无法设置 ${FTP_WRITABLE} 为 755（挂载卷限制，忽略）"
 
-    # 写入虚拟用户数据库
+    # 写入虚拟用户密码文件（pam_pwdfile.so 要求的格式: user:hash）
     log_info "生成密码哈希..."
-    FTP_PASS_HASH=$(openssl passwd -6 "${FTP_PASS}" 2>/dev/null || echo "${FTP_PASS}")
-    echo -e "${FTP_USER}\n${FTP_PASS_HASH}" > "${VIRTUAL_USERS_TXT}"
+    # 使用 openssl passwd -6 生成 SHA-512 哈希，确保与 pam_pwdfile.so 的 crypt(3) 完全兼容
+    # 注意：优先使用 openssl 而非 mkpasswd，因为某些系统上 mkpasswd 可能使用 yescrypt ($y$)
+    # 而 pam_pwdfile.so 的 crypt 模式需要标准的 $6$ 格式
+    if command -v openssl &>/dev/null; then
+        FTP_PASS_HASH=$(openssl passwd -6 "${FTP_PASS}" 2>/dev/null)
+    elif command -v mkpasswd &>/dev/null; then
+        FTP_PASS_HASH=$(mkpasswd -m sha-512 "${FTP_PASS}" 2>/dev/null)
+    else
+        FTP_PASS_HASH="${FTP_PASS}"
+    fi
+    printf '%s:%s\n' "${FTP_USER}" "${FTP_PASS_HASH}" > "${VIRTUAL_USERS_TXT}"
 
     # 如果指定了 ADDITIONAL_USERS，也添加进去
     if [ -n "${ADDITIONAL_USERS:-}" ]; then
@@ -126,14 +140,57 @@ else
             ADD_PASS=$(echo "${user_entry}" | cut -d: -f2)
             if [ -n "${ADD_USER}" ] && [ -n "${ADD_PASS}" ]; then
                 ADD_HASH=$(openssl passwd -6 "${ADD_PASS}" 2>/dev/null || echo "${ADD_PASS}")
-                echo -e "${ADD_USER}\n${ADD_HASH}" >> "${VIRTUAL_USERS_TXT}"
+                printf '%s:%s\n' "${ADD_USER}" "${ADD_HASH}" >> "${VIRTUAL_USERS_TXT}"
                 log_info "添加额外用户: ${ADD_USER}"
             fi
         done
     fi
 
-    /usr/bin/db_load -T -t hash -f "${VIRTUAL_USERS_TXT}" "${VIRTUAL_USERS_DB}"
-    log_info "虚拟用户数据库已创建"
+    log_info "虚拟用户密码文件已创建"
+
+    # 验证哈希是否正确
+    log_info "验证密码哈希..."
+    if command -v python3 &>/dev/null; then
+        python3 -c "
+import crypt
+password = '${FTP_PASS}'
+with open('${VIRTUAL_USERS_TXT}', 'r') as f:
+    for line in f:
+        user, stored_hash = line.strip().split(':', 1)
+        if user == '${FTP_USER}':
+            if crypt.crypt(password, stored_hash) == stored_hash:
+                print('密码验证成功: SHA-512 哈希匹配')
+            else:
+                print('警告: 密码验证失败！哈希不匹配')
+                print(f'用户: ${FTP_USER}')
+                print(f'哈希: {stored_hash}')
+            break
+" 2>/dev/null || log_warn "无法使用 python3 验证哈希"
+    elif command -v perl &>/dev/null; then
+        perl -e '
+use strict;
+use warnings;
+my $password = "'"${FTP_PASS}"'";
+my $target_user = "'"${FTP_USER}"'";
+open(my $fh, "<", "'"${VIRTUAL_USERS_TXT}"'") or die "Cannot open file";
+while (my $line = <$fh>) {
+    chomp $line;
+    my ($user, $stored_hash) = split(/:/, $line, 2);
+    if ($user eq $target_user) {
+        my $crypted = crypt($password, $stored_hash);
+        if ($crypted eq $stored_hash) {
+            print "密码验证成功: SHA-512 哈希匹配\n";
+        } else {
+            print "警告: 密码验证失败！哈希不匹配\n";
+            print "用户: $target_user\n";
+            print "哈希: $stored_hash\n";
+        }
+        last;
+    }
+}
+close($fh);
+' 2>/dev/null || log_warn "无法使用 perl 验证哈希"
+    fi
 fi
 
 # ---------- 4. 被动模式配置 ----------

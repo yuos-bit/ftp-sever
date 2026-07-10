@@ -187,10 +187,14 @@ mkdir -p /home/vsftpd/newuser/files
 chmod 555 /home/vsftpd/newuser
 chmod 755 /home/vsftpd/newuser/files
 
-# 生成密码哈希并更新数据库
+# 生成密码哈希并更新密码文件（pam_pwdfile.so 格式：user:hash）
 FTP_PASS_HASH=$(openssl passwd -6 "newpassword")
-echo -e "newuser\n${FTP_PASS_HASH}" >> /etc/vsftpd/virtual_users.txt
-/usr/bin/db_load -T -t hash -f /etc/vsftpd/virtual_users.txt /etc/vsftpd/virtual_users.db
+# 检查用户是否已存在
+if grep -q "^newuser:" /etc/vsftpd/virtual_users.txt 2>/dev/null; then
+    sed -i "s|^newuser:.*|newuser:${FTP_PASS_HASH}|" /etc/vsftpd/virtual_users.txt
+else
+    echo "newuser:${FTP_PASS_HASH}" >> /etc/vsftpd/virtual_users.txt
+fi
 
 exit
 docker restart ftp-server
@@ -202,7 +206,7 @@ docker restart ftp-server
 
 ### 密码安全
 
-密码使用 SHA-512（`$6$`）哈希加密后存储在 Berkeley DB 中，不再明文保存。即使数据库文件泄露，也无法直接获取原始密码。
+密码使用 SHA-512（`$6$`）哈希加密后存储在文本密码文件中（`pam_pwdfile.so` 格式：`user:hash`），不再明文保存。即使文件泄露，也无法直接获取原始密码。
 
 ### chroot 安全
 
