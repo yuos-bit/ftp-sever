@@ -176,8 +176,11 @@ services:
       # 其他配置（可按需修改）
       LOG_STDOUT: "YES"
     volumes:
-      # FTP 数据目录（宿主目录映射）
-      - "./data:/home/vsftpd"
+      # FTP 数据目录：宿主 ./files/data/ → 容器 /home/vsftpd/admin/
+      # 容器内结构：admin/ 根 555（不可写，chroot 安全）
+      #               admin/data/ 755（可写，用户在此目录操作）
+      # 宿主机只需在 ./files/ 下放 data/ 目录，用户登录后看到 data/
+      - "./files/data:/home/vsftpd/admin"
       # 日志目录（可选）
       - "./logs:/var/log/vsftpd"
 ```
@@ -425,7 +428,7 @@ docker cp vsftpd:/home/vsftpd/admin/files ./backup/
 采用安全的 chroot 方案：
 
 - **chroot 根目录**（`/home/vsftpd/<user>`）：权限 `555`（不可写）
-- **可写子目录**（`/home/vsftpd/<user>/files`）：权限 `755`（可写）
+- **可写子目录**（`/home/vsftpd/<user>/data`）：权限 `755`（可写）
 
 这遵循了 vsftpd 的安全建议——chroot 后的根目录不可写，防止 chroot 逃逸攻击。
 
@@ -464,7 +467,8 @@ docker-vsftpd/
 ├── vsftpd.conf             # vsftpd 服务器配置
 ├── vsftpd_virtual          # PAM 虚拟用户认证配置
 ├── README.md               # 本文档
-├── data/                   # FTP 数据目录（映射到 /home/vsftpd）
+├── files/                  # FTP 数据父目录
+│   └── data/               #   实际数据目录（映射到 /home/vsftpd/admin/）
 ├── logs/                   # 日志目录（映射到 /var/log/vsftpd，可选）
 └── LICENSE                 # Apache License 2.0
 ```
@@ -487,10 +491,12 @@ docker-vsftpd/
 
 | 宿主路径 | 容器路径 | 说明 |
 | :--- | :--- | :--- |
-| `./data` | `/home/vsftpd` | 用户主目录（FTP 数据），必须映射 |
+| `./files/data` | `/home/vsftpd/admin` | admin 用户的 chroot 根目录（555），用户登录后看到 `data/` 子目录 |
 | `./logs` | `/var/log/vsftpd` | vsftpd 日志目录，可选映射 |
 
-> **注意**：挂载宿主机目录时，FTP 用户的 UID/GID 应为 `14/50`（容器内 ftp 用户的默认 ID）。
+> **注意**：
+> - 容器内结构：`/home/vsftpd/admin/` 根目录为 `chmod 555`（不可写），`/home/vsftpd/admin/data/` 为 `chmod 755`（可写目录）
+> - 挂载宿主机目录时，FTP 用户的 UID/GID 应为 `14/50`（容器内 ftp 用户的默认 ID）
 
 ---
 
