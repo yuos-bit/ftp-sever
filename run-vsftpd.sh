@@ -64,6 +64,9 @@ log_info "创建用户目录: ${FTP_CHROOT}"
 # 创建目录结构（即使挂载了宿主机目录，子目录 files/ 也需要创建）
 mkdir -p "${FTP_WRITABLE}"
 
+# 确保 vsftpd 所需的运行目录存在（挂载卷可能覆盖）
+mkdir -p /var/run/vsftpd/empty 2>/dev/null || true
+
 # 修复挂载卷的根目录权限（如果 Docker 自动创建了宿主目录，所有者可能是 root）
 # 使用 chown 确保 ftp 用户可以访问，挂载卷上可能失败但不影响运行
 if [ "$(stat -c '%u:%g' /home/vsftpd)" != "${FTP_UID:-14}:${FTP_GID:-50}" ] 2>/dev/null; then

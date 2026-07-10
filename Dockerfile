@@ -35,7 +35,7 @@ RUN groupdel staff 2>/dev/null; \
 # 创建必要的运行目录
 RUN mkdir -p /home/vsftpd && \
     chown -R ftp:ftp /home/vsftpd && \
-    mkdir -p /var/log/vsftpd /etc/vsftpd /usr/share/empty
+    mkdir -p /var/log/vsftpd /etc/vsftpd /usr/share/empty /var/run/vsftpd/empty
 
 # 环境变量（使用 KEY=value 格式）
 ENV FTP_USER=**String**
