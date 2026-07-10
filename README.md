@@ -57,6 +57,12 @@
 docker pull yuos/ftp-server
 ```
 
+### 方法二：从阿里云 Registry 拉取
+
+```bash
+docker pull crpi-p23ba2t3b53i8v8p.cn-chengdu.personal.cr.aliyuncs.com/yuos-data/ftp-sever:1.0
+```
+
 ### 方法二：本地构建
 
 ```bash
@@ -76,34 +82,29 @@ docker-compose up -d
 
 ---
 
-## 🚀 推送到 Docker Hub
+## 🚀 推送到阿里云 Registry
 
-构建镜像后，您可以将其推送到 Docker Hub 公开仓库，让其他人也能拉取使用。
+构建镜像后，您可以将其推送到阿里云容器镜像服务（ACR），让其他人也能拉取使用。
 
 ### 前置条件
 
-1. 在 [Docker Hub](https://hub.docker.com/) 注册账号
-2. 在 Docker Hub 上创建仓库 `yuos/ftp-server`（选择公开 Public）
+1. 在 [阿里云容器镜像服务](https://cr.console.aliyun.com/) 创建命名空间 `yuos-data` 和仓库 `ftp-sever`
+2. 仓库类型选择**公开（Public）**
 
 ### 推送步骤
 
 ```bash
-# 1. 登录 Docker Hub
-docker login
+# 1. 登录阿里云 Registry
+docker login --username=今年夏至仅我流连 crpi-p23ba2t3b53i8v8p.cn-chengdu.personal.cr.aliyuncs.com
 
 # 2. 构建镜像
 docker build -t yuos/ftp-server .
 
-# 3. 推送镜像到 Docker Hub
-docker push yuos/ftp-server
+# 3. 标记镜像为阿里云 Registry 地址
+docker tag yuos/ftp-server:latest crpi-p23ba2t3b53i8v8p.cn-chengdu.personal.cr.aliyuncs.com/yuos-data/ftp-sever:1.0
 
-# 4. （可选）标记版本号并推送
-docker tag yuos/ftp-server yuos/ftp-server:1.0
-docker push yuos/ftp-server:1.0
-
-# 5. （可选）标记为 latest
-docker tag yuos/ftp-server yuos/ftp-server:latest
-docker push yuos/ftp-server:latest
+# 4. 推送到阿里云
+docker push crpi-p23ba2t3b53i8v8p.cn-chengdu.personal.cr.aliyuncs.com/yuos-data/ftp-sever:1.0
 ```
 
 ### 使用 Docker Compose 构建并推送
@@ -112,18 +113,19 @@ docker push yuos/ftp-server:latest
 # 构建镜像
 docker-compose build
 
-# 推送到 Docker Hub
-docker push yuos/ftp-server
+# 标记并推送
+docker tag yuos/ftp-server:latest crpi-p23ba2t3b53i8v8p.cn-chengdu.personal.cr.aliyuncs.com/yuos-data/ftp-sever:1.0
+docker push crpi-p23ba2t3b53i8v8p.cn-chengdu.personal.cr.aliyuncs.com/yuos-data/ftp-sever:1.0
 ```
 
 ### 验证推送结果
 
 ```bash
-# 拉取测试
-docker pull yuos/ftp-server
+# 从阿里云 Registry 拉取测试
+docker pull crpi-p23ba2t3b53i8v8p.cn-chengdu.personal.cr.aliyuncs.com/yuos-data/ftp-sever:1.0
 
 # 运行测试
-docker run --rm yuos/ftp-server
+docker run --rm crpi-p23ba2t3b53i8v8p.cn-chengdu.personal.cr.aliyuncs.com/yuos-data/ftp-sever:1.0
 ```
 
 ---
@@ -307,4 +309,3 @@ docker-vsftpd/
 ## 🤝 致谢
 
 - 原项目：[fauria/vsftpd](https://github.com/fauria/docker-vsftpd) — Fer Uria 维护的原始 vsftpd Docker 镜像
-- Docker Hub：[yuos/ftp-server](https://hub.docker.com/r/yuos/ftp-server)
