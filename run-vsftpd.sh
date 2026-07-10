@@ -147,6 +147,8 @@ if [ "${PASV_ADDRESS}" = "**IPv4**" ]; then
 fi
 
 # 将运行时参数追加到 vsftpd.conf（覆盖默认值）
+# 注意：pasv_promiscuous=YES 在使用 NAT/防火墙时是必需的
+# 否则 vsftpd 会验证数据连接源 IP 与控制连接源 IP 一致，导致数据连接失败
 {
     echo "pasv_address=${PASV_ADDRESS}"
     echo "pasv_max_port=${PASV_MAX_PORT}"

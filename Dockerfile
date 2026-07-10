@@ -64,8 +64,8 @@ RUN chmod +x /usr/sbin/run-vsftpd.sh
 VOLUME /home/vsftpd
 VOLUME /var/log/vsftpd
 
-# 暴露 FTP 控制端口和数据端口
-EXPOSE 20 21
+# 暴露 FTP 控制端口、数据端口和被动模式端口
+EXPOSE 20 21 2030-2040
 
 # 设置入口
 CMD ["/usr/sbin/run-vsftpd.sh"]
