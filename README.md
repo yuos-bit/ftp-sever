@@ -1,6 +1,6 @@
 # yuos/ftp-server
 
-![docker_logo](docker_139x115.png "Docker 标志") ![docker_fauria_logo](docker_fauria_161x115.png "FTP 服务器标志")
+![docker_logo](docker_139x115.png "Docker 标志")
 
 ## 📋 项目概述
 
@@ -91,6 +91,7 @@ sudo docker build -t yuos/ftp-server:latest -t yuos/ftp-server:1.0.0 .
 ```bash
 docker-compose up -d
 ```
+
 ---
 
 ## ⚙️ 环境变量
