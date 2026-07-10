@@ -150,7 +150,7 @@ cat << EOB
     · 密码加密:   SHA-512 (\$6\$)
     · 日志文件:   ${XFERLOG_FILE}
     · 日志输出:   已重定向到 STDOUT（docker logs 可见）
-    · 沙箱保护:   已启用
+    · 沙箱保护:   已禁用（seccomp_sandbox=NO）
     · chroot 安全: 已加固
     · 被动模式地址: ${PASV_ADDRESS}
     · 被动模式端口: ${PASV_MIN_PORT}-${PASV_MAX_PORT}
@@ -163,6 +163,24 @@ log_info "初始化完成，正在启动 vsftpd 服务..."
 # ---------- 7. 启动 vsftpd ----------
 
 # 前台运行（background=NO），保持容器不退出
-# 将 vsftpd 的 stderr 也重定向到 stdout，确保所有错误信息可见
-# 注意：vsftpd 前台运行时不输出到 stderr 本身，但保留 2>&1 以防万一
+# 先测试配置文件语法是否正确
+log_info "检查 vsftpd 配置文件..."
+# 使用 -olisten=NO 测试配置，不真正监听端口
+/usr/sbin/vsftpd -olisten=NO /etc/vsftpd/vsftpd.conf &
+VSFTPD_PID=$!
+sleep 1
+if kill -0 ${VSFTPD_PID} 2>/dev/null; then
+    # 测试进程在运行，杀掉它然后正式启动
+    kill ${VSFTPD_PID} 2>/dev/null
+    wait ${VSFTPD_PID} 2>/dev/null
+    log_info "配置检查通过"
+else
+    # 等待测试进程退出并获取退出码
+    wait ${VSFTPD_PID} 2>/dev/null
+    EXIT_CODE=$?
+    log_error "vsftpd 测试启动失败，退出码: ${EXIT_CODE}"
+    log_error "请检查 vsftpd 配置和系统环境"
+fi
+
+log_info "启动 vsftpd..."
 exec /usr/sbin/vsftpd /etc/vsftpd/vsftpd.conf
