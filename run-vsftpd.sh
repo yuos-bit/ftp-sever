@@ -103,7 +103,6 @@ fi
     echo "file_open_mode=${FILE_OPEN_MODE}"
     echo "local_umask=${LOCAL_UMASK}"
     echo "xferlog_std_format=${XFERLOG_STD_FORMAT}"
-    echo "reverse_lookup_enable=${REVERSE_LOOKUP_ENABLE}"
     echo "pasv_promiscuous=${PASV_PROMISCUOUS}"
     echo "port_promiscuous=${PORT_PROMISCUOUS}"
 } >> /etc/vsftpd/vsftpd.conf

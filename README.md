@@ -109,7 +109,6 @@ docker-compose up -d
 | `LOG_STDOUT` | 空 | 设置任意值将日志输出到 STDOUT（`docker logs` 可见） |
 | `FILE_OPEN_MODE` | `0666` | 上传文件的创建权限（结合 umask 使用） |
 | `LOCAL_UMASK` | `077` | 本地用户的 umask 值（注意八进制前缀 `0`） |
-| `REVERSE_LOOKUP_ENABLE` | `YES` | 是否启用反向 DNS 查询（网络慢时设为 `NO`） |
 | `PASV_PROMISCUOUS` | `NO` | 禁用被动模式 IP 安全检查（仅 FXP 或隧道时启用） |
 | `PORT_PROMISCUOUS` | `NO` | 禁用主动模式 IP 安全检查（仅 FXP 时启用） |
 
