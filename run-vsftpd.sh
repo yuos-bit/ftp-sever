@@ -50,147 +50,93 @@ if [ -z "${XFERLOG_FILE}" ]; then
     XFERLOG_FILE="/var/log/vsftpd/vsftpd.log"
 fi
 
-# ---------- 3. 创建用户目录和虚拟用户密码文件 ----------
+# ---------- 3. 创建系统用户和目录 ----------
 
-# vsftpd 要求 chroot 根目录不可写，但用户需要能够写入文件。
-# 安全方案：chroot 根目录（用户主目录）设为不可写（555），
-# 在内部创建可写子目录（755）供用户使用。
+# 使用系统本地用户（pam_unix）进行认证，替代虚拟用户模式
+# 这样无需依赖 pam_userdb.so 或 pam_pwdfile.so 等额外 PAM 模块
+# 系统用户密码直接由 chpasswd 设置，使用 SHA-512 加密
 
 # 确保 vsftpd 所需的运行目录存在（挂载卷可能覆盖）
 mkdir -p /var/run/vsftpd/empty 2>/dev/null || true
 
-# 虚拟用户密码文件路径（pam_pwdfile.so 直接读取此文件）
-# 格式：每行 username:password_hash（与 Apache htpasswd 兼容）
-VIRTUAL_USERS_TXT="/etc/vsftpd/virtual_users.txt"
+# 定义函数：创建或更新 FTP 系统用户
+create_ftp_user() {
+    local USERNAME="$1"
+    local PASSWORD="$2"
 
-# 检查是否已存在虚拟用户密码文件（持久化挂载的场景）
-if [ -f "${VIRTUAL_USERS_TXT}" ] && [ -s "${VIRTUAL_USERS_TXT}" ]; then
-    log_info "检测到已存在的虚拟用户密码文件，跳过用户创建"
+    # 用户主目录路径
+    local FTP_CHROOT="/home/vsftpd/${USERNAME}"
+    local FTP_WRITABLE="${FTP_CHROOT}/files"
 
-    # 但还是要确保 FTP_USER 的目录存在
-    FTP_CHROOT="/home/vsftpd/${FTP_USER}"
-    FTP_WRITABLE="${FTP_CHROOT}/files"
-    mkdir -p "${FTP_WRITABLE}"
-    chmod 555 "${FTP_CHROOT}" 2>/dev/null || true
-    chmod 755 "${FTP_WRITABLE}" 2>/dev/null || true
-    chown -R ftp:ftp /home/vsftpd/ 2>/dev/null || true
-
-    # 如果指定了 ADDITIONAL_USERS，将其追加到密码文件
-    if [ -n "${ADDITIONAL_USERS:-}" ]; then
-        log_info "检测到 ADDITIONAL_USERS，添加额外用户..."
-        IFS=',' read -ra USER_LIST <<< "${ADDITIONAL_USERS}"
-        for user_entry in "${USER_LIST[@]}"; do
-            ADD_USER=$(echo "${user_entry}" | cut -d: -f1)
-            ADD_PASS=$(echo "${user_entry}" | cut -d: -f2)
-            if [ -n "${ADD_USER}" ] && [ -n "${ADD_PASS}" ]; then
-                ADD_HASH=$(openssl passwd -6 "${ADD_PASS}" 2>/dev/null || echo "${ADD_PASS}")
-                # 检查用户是否已存在，避免重复添加
-                if grep -q "^${ADD_USER}:" "${VIRTUAL_USERS_TXT}" 2>/dev/null; then
-                    # 更新已有用户的密码
-                    sed -i "s|^${ADD_USER}:.*|${ADD_USER}:${ADD_HASH}|" "${VIRTUAL_USERS_TXT}"
-                    log_info "更新额外用户密码: ${ADD_USER}"
-                else
-                    printf '%s:%s\n' "${ADD_USER}" "${ADD_HASH}" >> "${VIRTUAL_USERS_TXT}"
-                    log_info "添加额外用户: ${ADD_USER}"
-                fi
-            fi
-        done
-        log_info "虚拟用户密码文件已更新"
-    fi
-else
-    # 首次启动：创建用户
-    FTP_CHROOT="/home/vsftpd/${FTP_USER}"
-    FTP_WRITABLE="${FTP_CHROOT}/files"
-
-    log_info "创建用户目录: ${FTP_CHROOT}"
-
-    # 创建目录结构（即使挂载了宿主机目录，子目录 files/ 也需要创建）
+    # 创建目录结构
     mkdir -p "${FTP_WRITABLE}"
 
-    # 修复挂载卷的根目录权限
-    if [ "$(stat -c '%u:%g' /home/vsftpd)" != "${FTP_UID:-14}:${FTP_GID:-50}" ] 2>/dev/null; then
-        chown ftp:ftp /home/vsftpd/ 2>/dev/null || log_warn "无法更改 /home/vsftpd 所有者（挂载卷限制，使用 userns 模式时正常）"
+    # 检查用户是否已存在
+    if id "${USERNAME}" &>/dev/null; then
+        log_info "用户 ${USERNAME} 已存在，更新密码"
+        # 更新密码（chpasswd 接受明文，自动使用 SHA-512 加密）
+        echo "${USERNAME}:${PASSWORD}" | /usr/sbin/chpasswd -c SHA512 2>/dev/null || \
+        echo "${USERNAME}:${PASSWORD}" | /usr/sbin/chpasswd 2>/dev/null
+    else
+        log_info "创建系统用户: ${USERNAME}"
+        # 创建系统用户（-d 指定家目录，-s 指定 shell，-G ftp 加入 ftp 组）
+        # 使用 --no-log-init 避免生成大量的日志条目
+        useradd --no-log-init -M -d "${FTP_CHROOT}" -s /usr/sbin/nologin -G ftp "${USERNAME}" 2>/dev/null || \
+        useradd -M -d "${FTP_CHROOT}" -s /usr/sbin/nologin -G ftp "${USERNAME}"
+        # 设置密码
+        echo "${USERNAME}:${PASSWORD}" | /usr/sbin/chpasswd -c SHA512 2>/dev/null || \
+        echo "${USERNAME}:${PASSWORD}" | /usr/sbin/chpasswd
     fi
-    chown ftp:ftp "${FTP_CHROOT}" 2>/dev/null || true
-    chown ftp:ftp "${FTP_WRITABLE}" 2>/dev/null || true
 
+    # 设置目录权限
     # 注意：必须先创建子目录，再修改根目录权限
     chmod 555 "${FTP_CHROOT}" 2>/dev/null || log_warn "无法设置 ${FTP_CHROOT} 为 555（挂载卷限制，忽略）"
     chmod 755 "${FTP_WRITABLE}" 2>/dev/null || log_warn "无法设置 ${FTP_WRITABLE} 为 755（挂载卷限制，忽略）"
+    chown -R "${USERNAME}:ftp" "${FTP_CHROOT}" 2>/dev/null || log_warn "无法更改 ${FTP_CHROOT} 所有者（挂载卷限制，忽略）"
 
-    # 写入虚拟用户密码文件（pam_pwdfile.so 要求的格式: user:hash）
-    log_info "生成密码哈希..."
-    # 使用 openssl passwd -6 生成 SHA-512 哈希，确保与 pam_pwdfile.so 的 crypt(3) 完全兼容
-    # 注意：优先使用 openssl 而非 mkpasswd，因为某些系统上 mkpasswd 可能使用 yescrypt ($y$)
-    # 而 pam_pwdfile.so 的 crypt 模式需要标准的 $6$ 格式
-    if command -v openssl &>/dev/null; then
-        FTP_PASS_HASH=$(openssl passwd -6 "${FTP_PASS}" 2>/dev/null)
-    elif command -v mkpasswd &>/dev/null; then
-        FTP_PASS_HASH=$(mkpasswd -m sha-512 "${FTP_PASS}" 2>/dev/null)
-    else
-        FTP_PASS_HASH="${FTP_PASS}"
-    fi
-    printf '%s:%s\n' "${FTP_USER}" "${FTP_PASS_HASH}" > "${VIRTUAL_USERS_TXT}"
-
-    # 如果指定了 ADDITIONAL_USERS，也添加进去
-    if [ -n "${ADDITIONAL_USERS:-}" ]; then
-        IFS=',' read -ra USER_LIST <<< "${ADDITIONAL_USERS}"
-        for user_entry in "${USER_LIST[@]}"; do
-            ADD_USER=$(echo "${user_entry}" | cut -d: -f1)
-            ADD_PASS=$(echo "${user_entry}" | cut -d: -f2)
-            if [ -n "${ADD_USER}" ] && [ -n "${ADD_PASS}" ]; then
-                ADD_HASH=$(openssl passwd -6 "${ADD_PASS}" 2>/dev/null || echo "${ADD_PASS}")
-                printf '%s:%s\n' "${ADD_USER}" "${ADD_HASH}" >> "${VIRTUAL_USERS_TXT}"
-                log_info "添加额外用户: ${ADD_USER}"
-            fi
-        done
-    fi
-
-    log_info "虚拟用户密码文件已创建"
-
-    # 验证哈希是否正确
-    log_info "验证密码哈希..."
-    if command -v python3 &>/dev/null; then
-        python3 -c "
-import crypt
-password = '${FTP_PASS}'
-with open('${VIRTUAL_USERS_TXT}', 'r') as f:
-    for line in f:
-        user, stored_hash = line.strip().split(':', 1)
-        if user == '${FTP_USER}':
-            if crypt.crypt(password, stored_hash) == stored_hash:
-                print('密码验证成功: SHA-512 哈希匹配')
-            else:
-                print('警告: 密码验证失败！哈希不匹配')
-                print(f'用户: ${FTP_USER}')
-                print(f'哈希: {stored_hash}')
-            break
-" 2>/dev/null || log_warn "无法使用 python3 验证哈希"
-    elif command -v perl &>/dev/null; then
-        perl -e '
-use strict;
-use warnings;
-my $password = "'"${FTP_PASS}"'";
-my $target_user = "'"${FTP_USER}"'";
-open(my $fh, "<", "'"${VIRTUAL_USERS_TXT}"'") or die "Cannot open file";
-while (my $line = <$fh>) {
-    chomp $line;
-    my ($user, $stored_hash) = split(/:/, $line, 2);
-    if ($user eq $target_user) {
-        my $crypted = crypt($password, $stored_hash);
-        if ($crypted eq $stored_hash) {
-            print "密码验证成功: SHA-512 哈希匹配\n";
-        } else {
-            print "警告: 密码验证失败！哈希不匹配\n";
-            print "用户: $target_user\n";
-            print "哈希: $stored_hash\n";
-        }
-        last;
-    }
+    log_info "用户 ${USERNAME} 设置完成"
 }
-close($fh);
-' 2>/dev/null || log_warn "无法使用 perl 验证哈希"
-    fi
+
+# 修复挂载卷的根目录权限
+if [ "$(stat -c '%u:%g' /home/vsftpd)" != "${FTP_UID:-14}:${FTP_GID:-50}" ] 2>/dev/null; then
+    chown ftp:ftp /home/vsftpd/ 2>/dev/null || log_warn "无法更改 /home/vsftpd 所有者（挂载卷限制，使用 userns 模式时正常）"
+fi
+
+# 创建主用户
+create_ftp_user "${FTP_USER}" "${FTP_PASS}"
+
+# 如果指定了 ADDITIONAL_USERS，也创建
+if [ -n "${ADDITIONAL_USERS:-}" ]; then
+    log_info "检测到 ADDITIONAL_USERS，添加额外用户..."
+    IFS=',' read -ra USER_LIST <<< "${ADDITIONAL_USERS}"
+    for user_entry in "${USER_LIST[@]}"; do
+        ADD_USER=$(echo "${user_entry}" | cut -d: -f1)
+        ADD_PASS=$(echo "${user_entry}" | cut -d: -f2)
+        if [ -n "${ADD_USER}" ] && [ -n "${ADD_PASS}" ]; then
+            create_ftp_user "${ADD_USER}" "${ADD_PASS}"
+        fi
+    done
+fi
+
+# 验证密码
+log_info "验证密码..."
+if command -v python3 &>/dev/null; then
+    python3 -c "
+import crypt, subprocess
+password = '${FTP_PASS}'
+import spwd
+try:
+    sp = spwd.getspnam('${FTP_USER}')
+    stored_hash = sp.sp_pwd
+    if crypt.crypt(password, stored_hash) == stored_hash:
+        print('密码验证成功: SHA-512 哈希匹配')
+    else:
+        print('警告: 密码验证失败！哈希不匹配')
+        print(f'用户: ${FTP_USER}')
+        print(f'哈希: {stored_hash}')
+except KeyError:
+    print('警告: 无法读取 shadow 密码（容器可能无权限）')
+" 2>/dev/null || log_warn "无法使用 python3 验证密码"
 fi
 
 # ---------- 4. 被动模式配置 ----------
@@ -262,7 +208,7 @@ cat << EOB
     -----------------------------------------------
     · FTP 用户名: ${FTP_USER}
     · FTP 密码:   ${FTP_PASS}
-    · 密码加密:   SHA-512 (\$6\$)
+    · 密码加密:   SHA-512 (pam_unix)
     · 日志文件:   ${XFERLOG_FILE}
     · 日志输出:   已重定向到 STDOUT（docker logs 可见）
     · 沙箱保护:   已禁用（seccomp_sandbox=NO）

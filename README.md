@@ -187,14 +187,13 @@ mkdir -p /home/vsftpd/newuser/files
 chmod 555 /home/vsftpd/newuser
 chmod 755 /home/vsftpd/newuser/files
 
-# 生成密码哈希并更新密码文件（pam_pwdfile.so 格式：user:hash）
-FTP_PASS_HASH=$(openssl passwd -6 "newpassword")
-# 检查用户是否已存在
-if grep -q "^newuser:" /etc/vsftpd/virtual_users.txt 2>/dev/null; then
-    sed -i "s|^newuser:.*|newuser:${FTP_PASS_HASH}|" /etc/vsftpd/virtual_users.txt
-else
-    echo "newuser:${FTP_PASS_HASH}" >> /etc/vsftpd/virtual_users.txt
-fi
+# 创建系统用户（使用 pam_unix 认证）
+useradd -M -d /home/vsftpd/newuser -s /usr/sbin/nologin -G ftp newuser
+# 设置密码（chpasswd 自动使用 SHA-512 加密）
+echo "newuser:newpassword" | chpasswd -c SHA512
+# 设置目录所有者
+chown -R newuser:ftp /home/vsftpd/newuser
+/usr/bin/db_load -T -t hash -f /etc/vsftpd/virtual_users.txt /etc/vsftpd/virtual_users.db
 
 exit
 docker restart ftp-server
@@ -206,7 +205,7 @@ docker restart ftp-server
 
 ### 密码安全
 
-密码使用 SHA-512（`$6$`）哈希加密后存储在文本密码文件中（`pam_pwdfile.so` 格式：`user:hash`），不再明文保存。即使文件泄露，也无法直接获取原始密码。
+密码使用 SHA-512（`$6$`）哈希加密后存储在系统 shadow 文件中（`pam_unix.so`），不再明文保存。即使文件泄露，也无法直接获取原始密码。
 
 ### chroot 安全
 

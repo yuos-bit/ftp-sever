@@ -1,5 +1,8 @@
 #%PAM-1.0
-auth	required	pam_pwdfile.so	pwdfile=/etc/vsftpd/virtual_users.txt
-account	required	pam_pwdfile.so	pwdfile=/etc/vsftpd/virtual_users.txt
+# vsftpd 虚拟用户 PAM 配置
+# 使用系统用户（pam_unix）进行密码验证
+# 在容器启动时由 run-vsftpd.sh 创建对应的系统用户
+auth	required	pam_unix.so	nullok
+account	required	pam_unix.so
 session	required	pam_loginuid.so
 
